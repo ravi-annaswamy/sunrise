@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sunrise & Sunset Timeline</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 30px;
+      background: #f4f4f4;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    form {
+      max-width: 450px;
+      margin: 20px auto;
+      background: #fff;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+
+    select,
+    input[type="number"],
+    input[type="date"] {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      box-sizing: border-box;
+      font-size: 1em;
+    }
+
+    input[type="submit"] {
+      margin-top: 20px;
+      background: #007BFF;
+      color: #fff;
+      border: none;
+      padding: 12px 20px;
+      font-size: 1em;
+      border-radius: 4px;
+      cursor: pointer;
+      width: 100%;
+    }
+
+    input[type="submit"]:hover {
+      background: #0056b3;
+    }
+
+    .error {
+      color: red;
+      text-align: center;
+      margin-top: 10px;
+    }
+
+    /* Timeline container */
+    .timeline-wrapper {
+      max-width: 600px;
+      margin: 30px auto;
+      position: relative;
+    }
+
+    .timeline-container {
+      position: relative;
+      height: 40px;  /* Adjust the height as desired */
+      background: #cccccc; /* Dull grey for night background */
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    /* Golden gradient area for daylight */
+    .daylight-strip {
+      position: absolute;
+      top: 0; 
+      bottom: 0;
+      background: linear-gradient(to right, #FFD700, #FFF7B2); /* gold to lighter gold */
+      /* left and width set by JS */
+    }
+
+    /* Marker lines */
+    .marker {
+      position: absolute;
+      top: 0;
+      width: 2px;
+      height: 100%;
+    }
+    .marker.sunrise {
+      background-color: red;
+    }
+    .marker.sunset {
+      background-color: black;
+    }
+
+    /* Small time labels directly above each marker */
+    .time-label {
+      position: absolute;
+      bottom: 48px; /* above the strip */
+      font-weight: bold;
+      white-space: nowrap;
+      transform: translateX(-50%); /* center horizontally on the marker */
+    }
+    .time-label.sunrise-label {
+      color: red;
+    }
+    .time-label.sunset-label {
+      color: black;
+    }
+
+    /* Bold labels on the far left/right showing "Sunrise: HH:MM" / "Sunset: HH:MM" */
+    .side-label {
+      position: absolute;
+      top: -32px;  /* place above the timeline */
+      font-weight: bold;
+    }
+    .side-label.left-label {
+      left: 0;
+    }
+    .side-label.right-label {
+      right: 0;
+    }
+
+    /* Hide timeline until we have data */
+    .timeline-wrapper.hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Sunrise & Sunset Timeline</h1>
+
+<form id="sunForm">
+  <!-- City dropdown (with associated time zones) -->
+  <label for="citySelect">Select a City (optional)</label>
+  <select id="citySelect">
+    <option value="">-- Select a City --</option>
+    <option value="New York">New York</option>
+    <option value="Chicago">Chicago</option>
+    <option value="San Francisco">San Francisco</option>
+    <option value="Austin">Austin</option>
+    <option value="Toronto">Toronto</option>
+    <option value="Beijing">Beijing</option>
+    <option value="London">London</option>
+    <option value="New Delhi">New Delhi</option>
+    <option value="Chennai">Chennai</option>
+    <option value="Chennai">Salem</option>
+    <option value="Kolkata">Kolkata</option>
+    <option value="Mumbai">Mumbai</option>
+    <option value="Thiruvananthapuram">Thiruvananthapuram</option>
+    <option value="Hyderabad">Hyderabad</option>
+    <option value="Lahore">Lahore</option>
+    <option value="Tokyo">Tokyo</option>
+    <option value="Seoul">Seoul</option>
+  </select>
+
+  <label for="latitude">Latitude (-90 to 90)</label>
+  <input type="number" id="latitude" step="any" required />
+
+  <label for="longitude">Longitude (-180 to 180)</label>
+  <input type="number" id="longitude" step="any" required />
+
+  <label for="dateInput">Date (1900 to 2100)</label>
+  <input type="date" id="dateInput" min="1900-01-01" max="2100-12-31" required />
+
+  <input type="submit" value="Calculate" />
+</form>
+
+<div class="error" id="errorMsg"></div>
+
+<!-- Timeline display -->
+<div class="timeline-wrapper hidden" id="timelineWrapper">
+  <!-- Labels on the far left/right -->
+  <div class="side-label left-label" id="leftSideLabel"></div>
+  <div class="side-label right-label" id="rightSideLabel"></div>
+
+  <div class="timeline-container">
+    <!-- Golden portion for daylight -->
+    <div class="daylight-strip" id="daylightStrip"></div>
+
+    <!-- Sunrise marker (red line) -->
+    <div class="marker sunrise" id="sunriseMarker"></div>
+    <!-- Sunrise label above the marker -->
+    <div class="time-label sunrise-label" id="sunriseLabel"></div>
+
+    <!-- Sunset marker (black line) -->
+    <div class="marker sunset" id="sunsetMarker"></div>
+    <!-- Sunset label above the marker -->
+    <div class="time-label sunset-label" id="sunsetLabel"></div>
+  </div>
+</div>
+
+<script>
+  // City data: [lat, lng, IANA_timeZone]
+  const cityDetails = {
+    "New York":       [ 40.7128,  -74.0060,  "America/New_York"    ],
+    "Chicago":        [ 41.8781,  -87.6298,  "America/Chicago"     ],
+    "San Francisco":  [ 37.7749,  -122.4194, "America/Los_Angeles" ],
+    "Austin":         [ 30.2672,  -97.7431,  "America/Chicago"     ],
+    "Toronto":        [ 43.65107, -79.347015,"America/Toronto"     ],
+    "Beijing":        [ 39.9042,   116.4074, "Asia/Shanghai"       ],
+    "London":         [ 51.5074,   -0.1278,  "Europe/London"       ],
+    "New Delhi":      [ 28.6139,   77.2090,  "Asia/Kolkata"        ],
+    "Chennai":        [ 13.0827,   80.2707,  "Asia/Kolkata"        ],
+    "Salem":          [ 11.6643,   78.1460,  "Asia/Kolkata"        ],
+    "Kolkata":        [ 22.5726,   88.3639,  "Asia/Kolkata"        ],
+    "Mumbai":         [ 19.0760,   72.8777,  "Asia/Kolkata"        ],
+    "Thiruvananthapuram": [ 8.5241, 76.9366, "Asia/Kolkata"        ],
+    "Hyderabad":      [ 17.3850,   78.4867,  "Asia/Kolkata"        ],
+    "Lahore":         [ 31.5497,   74.3436,  "Asia/Karachi"        ],
+    "Tokyo":          [ 35.6895,   139.6917, "Asia/Tokyo"          ],
+    "Seoul":          [ 37.5665,   126.9780, "Asia/Seoul"          ]
+  };
+
+  // 1) Default date picker to today's date
+  window.addEventListener('DOMContentLoaded', () => {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('dateInput').value = today;
+  });
+
+  // Auto-fill lat/long if city selected
+  const citySelect = document.getElementById('citySelect');
+  citySelect.addEventListener('change', function() {
+    const city = this.value;
+    if (cityDetails[city]) {
+      document.getElementById('latitude').value = cityDetails[city][0];
+      document.getElementById('longitude').value = cityDetails[city][1];
+    }
+  });
+
+  // Convert degrees to radians
+  function deg2rad(deg) {
+    return deg * Math.PI / 180;
+  }
+
+  // Day of year in UTC
+  function getDayOfYearUTC(date) {
+    const startUTC = Date.UTC(date.getUTCFullYear(), 0, 1);
+    const msDiff = date.getTime() - startUTC;
+    return Math.floor(msDiff / (1000 * 60 * 60 * 24)) + 1;
+  }
+
+  // NOAA-based sunrise/sunset calculation in UTC (fractional hours 0..24)
+  function calcSunTimeUTC(dayOfYear, lat, lng, isSunrise) {
+    const lngHour = lng / 15.0;
+    const t = (isSunrise)
+      ? dayOfYear + ((6 - lngHour) / 24)
+      : dayOfYear + ((18 - lngHour) / 24);
+
+    // Sun's mean anomaly
+    const M = (0.9856 * t) - 3.289;
+
+    // Sun's true longitude
+    let L = M + (1.916 * Math.sin(deg2rad(M))) 
+             + (0.020 * Math.sin(deg2rad(2 * M))) 
+             + 282.634;
+    L = (L + 360) % 360;
+
+    // Sun's right ascension
+    let RA = Math.atan(0.91764 * Math.tan(deg2rad(L)));
+    RA = RA * 180 / Math.PI;
+    RA = (RA + 360) % 360;
+
+    // Align quadrants
+    const LQ = Math.floor(L / 90) * 90;
+    const RAQ = Math.floor(RA / 90) * 90;
+    RA += (LQ - RAQ);
+    RA /= 15; // convert deg to hours
+
+    // Sun's declination
+    const sinDec = 0.39782 * Math.sin(deg2rad(L));
+    const cosDec = Math.cos(Math.asin(sinDec));
+
+    // Zenith ~ 90.8333°, cos ~ -0.01454
+    const cosZenith = Math.cos(deg2rad(90.8333));
+    const cosH = (cosZenith - (sinDec * Math.sin(deg2rad(lat))))
+                 / (cosDec * Math.cos(deg2rad(lat)));
+
+    if (cosH < -1 || cosH > 1) {
+      return NaN; // no sunrise or sunset
+    }
+
+    let H = 0;
+    if (isSunrise) {
+      H = 360 - (Math.acos(cosH) * 180 / Math.PI);
+    } else {
+      H = (Math.acos(cosH) * 180 / Math.PI);
+    }
+    H /= 15;
+
+    const T = H + RA - (0.06571 * t) - 6.622;
+    let UT = (T - lngHour) % 24;
+    if (UT < 0) UT += 24;
+
+    return UT;
+  }
+
+  // Compute sunrise/sunset as UTC Date objects
+  function calcSunTimesUTC(lat, lng, date) {
+    const dayOfYear = getDayOfYearUTC(date);
+    const sunriseUTC = calcSunTimeUTC(dayOfYear, lat, lng, true);
+    const sunsetUTC = calcSunTimeUTC(dayOfYear, lat, lng, false);
+
+    if (isNaN(sunriseUTC) || isNaN(sunsetUTC)) {
+      return { sunrise: null, sunset: null };
+    }
+
+    // Build the UTC datetime
+    const sunriseDateUTC = new Date(Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      Math.floor(sunriseUTC),
+      Math.floor((sunriseUTC % 1) * 60)
+    ));
+    const sunsetDateUTC = new Date(Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      Math.floor(sunsetUTC),
+      Math.floor((sunsetUTC % 1) * 60)
+    ));
+
+    return { sunrise: sunriseDateUTC, sunset: sunsetDateUTC };
+  }
+
+  // Main form submission
+  document.getElementById('sunForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const lat = parseFloat(document.getElementById('latitude').value);
+    const lng = parseFloat(document.getElementById('longitude').value);
+    const dateStr = document.getElementById('dateInput').value;
+    const city = citySelect.value;
+
+    const errorMsg = document.getElementById('errorMsg');
+    const timelineWrapper = document.getElementById('timelineWrapper');
+    const daylightStrip = document.getElementById('daylightStrip');
+    const sunriseMarker = document.getElementById('sunriseMarker');
+    const sunsetMarker = document.getElementById('sunsetMarker');
+    const sunriseLabel = document.getElementById('sunriseLabel');
+    const sunsetLabel = document.getElementById('sunsetLabel');
+
+    // side labels
+    const leftSideLabel = document.getElementById('leftSideLabel');
+    const rightSideLabel = document.getElementById('rightSideLabel');
+
+    // Reset output
+    errorMsg.textContent = '';
+    timelineWrapper.classList.add('hidden');
+
+    // Validate date
+    if (!dateStr) {
+      errorMsg.textContent = 'Please pick a valid date.';
+      return;
+    }
+    const inputDate = new Date(dateStr + 'T00:00:00');
+    const year = inputDate.getFullYear();
+    if (year < 1900 || year > 2100) {
+      errorMsg.textContent = 'Date must be between 1900 and 2100.';
+      return;
+    }
+
+    // Calculate sunrise/sunset in UTC
+    const { sunrise, sunset } = calcSunTimesUTC(lat, lng, inputDate);
+    if (!sunrise || !sunset) {
+      errorMsg.textContent = 'The sun never rises/sets on this date at this location.';
+      return;
+    }
+
+    // Determine the time zone
+    let cityTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (city && cityDetails[city]) {
+      cityTimeZone = cityDetails[city][2];
+    }
+
+    // Convert sunrise/sunset to "HH:mm" 24-hour string in that time zone
+    const sunriseStr = sunrise.toLocaleTimeString('en-US', {
+      timeZone: cityTimeZone,
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    const sunsetStr = sunset.toLocaleTimeString('en-US', {
+      timeZone: cityTimeZone,
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    // For the timeline, parse numeric hours/min
+    const [sunriseHour, sunriseMin] = sunriseStr.split(':').map(Number);
+    const [sunsetHour, sunsetMin]   = sunsetStr.split(':').map(Number);
+
+    // Fractions of 24
+    const sunriseFraction = ((sunriseHour + sunriseMin/60) / 24) * 100;
+    const sunsetFraction  = ((sunsetHour + sunsetMin/60)   / 24) * 100;
+
+    // Position the daylight strip from sunrise% to sunset%
+    const leftPos = Math.min(sunriseFraction, sunsetFraction);
+    const rightPos = Math.max(sunriseFraction, sunsetFraction);
+    daylightStrip.style.left = leftPos + '%';
+    daylightStrip.style.width = (rightPos - leftPos) + '%';
+
+    // Position markers
+    sunriseMarker.style.left = sunriseFraction + '%';
+    sunsetMarker.style.left  = sunsetFraction + '%';
+
+    // Marker labels
+    sunriseLabel.style.left = sunriseFraction + '%';
+    sunriseLabel.textContent = sunriseStr;
+    sunsetLabel.style.left  = sunsetFraction + '%';
+    sunsetLabel.textContent = sunsetStr;
+
+    // Side labels in bold
+    leftSideLabel.textContent = 'Sunrise: ' + sunriseStr;
+    rightSideLabel.textContent = 'Sunset: ' + sunsetStr;
+
+    // Show the timeline
+    timelineWrapper.classList.remove('hidden');
+  });
+</script>
+</body>
+</html>
